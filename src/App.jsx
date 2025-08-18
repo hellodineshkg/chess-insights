@@ -7,7 +7,7 @@ function App() {
     <Router>
       <nav className="p-4 bg-gray-200 flex gap-4">
         <Link to="/">Dashboard</Link>
-        <Link to="/game/123">Sample Game</Link>
+        <Link to="/game/123">Sample Games</Link>
       </nav>
 
       <Routes>
