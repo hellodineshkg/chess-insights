@@ -38,9 +38,6 @@ export default function PlayerSummary({ stats, loading }) {
         <li>Draws: <b>{draws}</b></li>
         <li>White Win %: <b>{whiteWinPercent}%</b></li>
         <li>Black Win %: <b>{blackWinPercent}%</b></li>
-        <li>
-          Most Played Opening: <b>{mostPlayedOpening?.name || 'N/A'}</b> ({mostPlayedOpening?.eco || 'N/A'})
-        </li>
       </ul>
     </section>
   );

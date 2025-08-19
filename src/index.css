@@ -273,7 +273,6 @@ h1 {
 
 .topbar-nav a.active {
   font-weight: 700;
-  text-decoration: underline;
 }
 
 .topbar-nav a:hover {
