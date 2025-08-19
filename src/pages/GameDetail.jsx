@@ -24,7 +24,7 @@ const ErrorState = ({ message, onRetry }) => (
   </div>
 );
 
-// Sample games data (same as before)
+// Sample games data with proper move notation
 const SAMPLE_GAMES = {
   "sample1": {
     id: "sample1",
@@ -33,7 +33,7 @@ const SAMPLE_GAMES = {
     result: "1-0",
     timeControl: "180+2",
     date: "2024-02-15",
-    moves: ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6", "Ba4", "Nf6", "O-O", "Be7", "Re1", "b5", "Bb3", "d6"],
+    moves: ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6", "Ba4", "Nf6", "O-O", "Be7", "Re1", "b5", "Bb3", "d6", "c3", "O-O", "h3", "Nb8", "d4", "Nbd7", "Nbd2", "Bb7", "Bc2", "Re8", "Nf1", "Bf8", "Ng3", "g6", "a4", "c5"],
     tactics: [
       {
         move: 5,
@@ -65,7 +65,7 @@ const SAMPLE_GAMES = {
     result: "1/2-1/2",
     timeControl: "300+3",
     date: "2024-02-10",
-    moves: ["d4", "d5", "c4", "e6", "Nc3", "Nf6", "cxd5", "exd5", "Bg5", "Be7", "e3", "O-O"],
+    moves: ["d4", "d5", "c4", "e6", "Nc3", "Nf6", "cxd5", "exd5", "Bg5", "Be7", "e3", "O-O", "Bd3", "c6", "Qc2", "Re8", "Nge2", "Nbd7", "O-O", "Nf8", "Rae1", "Ng6", "Bxf6", "Bxf6", "f4", "Be7"],
     tactics: [
       {
         move: 3,
@@ -90,7 +90,7 @@ const SAMPLE_GAMES = {
     result: "0-1",
     timeControl: "90+30",
     date: "2024-02-08",
-    moves: ["e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "a6", "Bg5", "e6"],
+    moves: ["e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "a6", "Bg5", "e6", "f4", "Be7", "Qf3", "Qc7", "O-O-O", "Nbd7", "g4", "b5", "Bxf6", "Nxf6", "g5", "Nd7", "f5", "Nc5"],
     tactics: [
       {
         move: 2,
@@ -110,7 +110,7 @@ const SAMPLE_GAMES = {
   }
 };
 
-// ECO Opening database (same as before)
+// ECO Opening database
 const ECO_DATABASE = {
   "e4 e5 Nf3 Nc6 Bb5": { code: "C60", name: "Spanish Opening (Ruy Lopez)" },
   "d4 d5 c4": { code: "D06", name: "Queen's Gambit" },
@@ -121,7 +121,270 @@ const ECO_DATABASE = {
   "e4 e5 Nf3 Nc6": { code: "C20", name: "King's Pawn Opening" }
 };
 
-// Helper functions (same as before)
+// Chess piece position tracker and move parser
+class ChessGame {
+  constructor() {
+    this.reset();
+  }
+
+  reset() {
+    this.board = this.getInitialPosition();
+    this.isWhiteToMove = true;
+    this.lastMove = null;
+    this.moveHistory = [];
+    this.castlingRights = {
+      whiteKingside: true,
+      whiteQueenside: true,
+      blackKingside: true,
+      blackQueenside: true
+    };
+  }
+
+  getInitialPosition() {
+    const board = Array(8).fill(null).map(() => Array(8).fill(null));
+    
+    // White pieces
+    board[7] = ['♖', '♘', '♗', '♕', '♔', '♗', '♘', '♖'];
+    board[6] = ['♙', '♙', '♙', '♙', '♙', '♙', '♙', '♙'];
+    
+    // Black pieces  
+    board[0] = ['♜', '♞', '♝', '♛', '♚', '♝', '♞', '♜'];
+    board[1] = ['♟', '♟', '♟', '♟', '♟', '♟', '♟', '♟'];
+
+    return board;
+  }
+
+  fileToIndex(file) {
+    return file.charCodeAt(0) - 'a'.charCodeAt(0);
+  }
+
+  rankToIndex(rank) {
+    return 8 - parseInt(rank);
+  }
+
+  indexToSquare(file, rank) {
+    return String.fromCharCode('a'.charCodeAt(0) + file) + (8 - rank);
+  }
+
+  getPieceAt(square) {
+    const file = this.fileToIndex(square[0]);
+    const rank = this.rankToIndex(square[1]);
+    return this.board[rank][file];
+  }
+
+  setPieceAt(square, piece) {
+    const file = this.fileToIndex(square[0]);
+    const rank = this.rankToIndex(square[1]);
+    this.board[rank][file] = piece;
+  }
+
+  parseMove(moveStr) {
+    // Remove check/checkmate indicators and annotations
+    const cleanMove = moveStr.replace(/[+#!?]+$/, '').trim();
+    
+    // Handle castling
+    if (cleanMove === 'O-O' || cleanMove === '0-0') {
+      return {
+        type: 'castle',
+        isKingside: true,
+        from: this.isWhiteToMove ? 'e1' : 'e8',
+        to: this.isWhiteToMove ? 'g1' : 'g8'
+      };
+    }
+    if (cleanMove === 'O-O-O' || cleanMove === '0-0-0') {
+      return {
+        type: 'castle',
+        isQueenside: true,
+        from: this.isWhiteToMove ? 'e1' : 'e8',
+        to: this.isWhiteToMove ? 'c1' : 'c8'
+      };
+    }
+
+    // Parse regular moves
+    const isCapture = cleanMove.includes('x');
+    let remaining = cleanMove;
+    
+    // Extract promotion if present
+    let promotion = null;
+    const promotionMatch = remaining.match(/=([QRBN])$/);
+    if (promotionMatch) {
+      promotion = promotionMatch[1];
+      remaining = remaining.replace(/=[QRBN]$/, '');
+    }
+
+    // Extract destination square (always last 2 characters)
+    const to = remaining.slice(-2);
+    remaining = remaining.slice(0, -2);
+
+    // Remove 'x' if present
+    if (remaining.endsWith('x')) {
+      remaining = remaining.slice(0, -1);
+    }
+
+    // Determine piece type and disambiguators
+    let pieceType = 'P'; // Default to pawn
+    let fromFile = null;
+    let fromRank = null;
+
+    if (remaining.match(/^[KQRBN]/)) {
+      // Piece move
+      pieceType = remaining[0];
+      const disambiguator = remaining.slice(1);
+      
+      if (disambiguator.length === 1) {
+        if (disambiguator >= 'a' && disambiguator <= 'h') {
+          fromFile = disambiguator;
+        } else if (disambiguator >= '1' && disambiguator <= '8') {
+          fromRank = disambiguator;
+        }
+      } else if (disambiguator.length === 2) {
+        fromFile = disambiguator[0];
+        fromRank = disambiguator[1];
+      }
+    } else if (remaining.length > 0) {
+      // Pawn move with file specified (for captures)
+      if (remaining >= 'a' && remaining <= 'h') {
+        fromFile = remaining;
+      }
+    }
+
+    return {
+      type: 'normal',
+      pieceType,
+      to,
+      fromFile,
+      fromRank,
+      isCapture,
+      promotion
+    };
+  }
+
+  isValidMove(from, to, pieceType) {
+    const fromFile = this.fileToIndex(from[0]);
+    const fromRank = this.rankToIndex(from[1]);
+    const toFile = this.fileToIndex(to[0]);
+    const toRank = this.rankToIndex(to[1]);
+    
+    const piece = this.board[fromRank][fromFile];
+    if (!piece) return false;
+
+    // Basic piece type validation
+    const whitePieces = { 'P': '♙', 'R': '♖', 'N': '♘', 'B': '♗', 'Q': '♕', 'K': '♔' };
+    const blackPieces = { 'P': '♟', 'R': '♜', 'N': '♞', 'B': '♝', 'Q': '♛', 'K': '♚' };
+    
+    const expectedPiece = this.isWhiteToMove ? whitePieces[pieceType] : blackPieces[pieceType];
+    if (piece !== expectedPiece) return false;
+
+    // For simplicity, we'll accept the move if the piece type matches
+    // A full chess engine would validate legal moves here
+    return true;
+  }
+
+  findPieceForMove(pieceType, to, fromFile = null, fromRank = null) {
+    const candidates = [];
+    
+    const whitePieces = { 'P': '♙', 'R': '♖', 'N': '♘', 'B': '♗', 'Q': '♕', 'K': '♔' };
+    const blackPieces = { 'P': '♟', 'R': '♜', 'N': '♞', 'B': '♝', 'Q': '♛', 'K': '♚' };
+    
+    const targetPiece = this.isWhiteToMove ? whitePieces[pieceType] : blackPieces[pieceType];
+
+    for (let rank = 0; rank < 8; rank++) {
+      for (let file = 0; file < 8; file++) {
+        if (this.board[rank][file] === targetPiece) {
+          const square = this.indexToSquare(file, rank);
+          
+          // Check file constraint
+          if (fromFile && square[0] !== fromFile) continue;
+          // Check rank constraint
+          if (fromRank && square[1] !== fromRank) continue;
+          
+          // Check if this piece can legally move to the destination
+          if (this.isValidMove(square, to, pieceType)) {
+            candidates.push(square);
+          }
+        }
+      }
+    }
+
+    // Return the first valid candidate (in a real chess engine, we'd resolve ambiguities)
+    return candidates.length > 0 ? candidates[0] : null;
+  }
+
+  makeMove(moveStr) {
+    const move = this.parseMove(moveStr);
+    
+    if (move.type === 'castle') {
+      // Handle castling
+      const rank = this.isWhiteToMove ? 7 : 0;
+      const kingFrom = 4;
+      const kingTo = move.isKingside ? 6 : 2;
+      const rookFrom = move.isKingside ? 7 : 0;
+      const rookTo = move.isKingside ? 5 : 3;
+      
+      // Move king
+      const king = this.board[rank][kingFrom];
+      this.board[rank][kingFrom] = null;
+      this.board[rank][kingTo] = king;
+      
+      // Move rook
+      const rook = this.board[rank][rookFrom];
+      this.board[rank][rookFrom] = null;
+      this.board[rank][rookTo] = rook;
+      
+      this.lastMove = { from: move.from, to: move.to };
+      
+    } else {
+      // Handle normal moves
+      const from = this.findPieceForMove(move.pieceType, move.to, move.fromFile, move.fromRank);
+      
+      if (!from) {
+        console.warn(`Could not find piece for move: ${moveStr}`);
+        return;
+      }
+
+      // Get the piece and move it
+      const piece = this.getPieceAt(from);
+      this.setPieceAt(from, null);
+      
+      // Handle promotion
+      if (move.promotion) {
+        const whitePieces = { 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘' };
+        const blackPieces = { 'Q': '♛', 'R': '♜', 'B': '♝', 'N': '♞' };
+        const promotedPiece = this.isWhiteToMove ? whitePieces[move.promotion] : blackPieces[move.promotion];
+        this.setPieceAt(move.to, promotedPiece);
+      } else {
+        this.setPieceAt(move.to, piece);
+      }
+      
+      this.lastMove = { from, to: move.to };
+    }
+    
+    this.isWhiteToMove = !this.isWhiteToMove;
+    this.moveHistory.push(moveStr);
+  }
+
+  playMovesToPosition(moves, moveIndex) {
+    this.reset();
+    
+    if (!moves || moveIndex < 0) {
+      return; // Show starting position
+    }
+    
+    for (let i = 0; i <= moveIndex && i < moves.length; i++) {
+      this.makeMove(moves[i]);
+    }
+  }
+
+  getBoardState() {
+    return {
+      board: this.board.map(row => [...row]),
+      lastMove: this.lastMove,
+      isWhiteToMove: this.isWhiteToMove
+    };
+  }
+}
+
+// Helper functions
 const detectOpening = (moves) => {
   if (!moves || moves.length === 0) return { code: "A00", name: "Unknown Opening" };
   
@@ -157,32 +420,56 @@ const findOpeningDeviation = (moves) => {
   };
 };
 
-// Chess board component
-const ChessBoard = ({ lastMove }) => {
+// Chess board component with moving pieces
+const ChessBoard = ({ moves, currentMoveIndex }) => {
+  const [chessGame] = useState(() => new ChessGame());
+  const [boardState, setBoardState] = useState(() => chessGame.getBoardState());
   const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
   const ranks = [8, 7, 6, 5, 4, 3, 2, 1];
 
+  // Update board position based on current move
+  useEffect(() => {
+    if (moves && moves.length > 0) {
+      chessGame.playMovesToPosition(moves, currentMoveIndex);
+      setBoardState(chessGame.getBoardState());
+    } else {
+      // Reset to starting position
+      chessGame.reset();
+      setBoardState(chessGame.getBoardState());
+    }
+  }, [moves, currentMoveIndex, chessGame]);
+
+  // Debug info (remove in production)
+  useEffect(() => {
+    if (currentMoveIndex >= 0 && moves && moves[currentMoveIndex]) {
+      console.log(`Move ${currentMoveIndex + 1}: ${moves[currentMoveIndex]}`, boardState.lastMove);
+    }
+  }, [currentMoveIndex, moves, boardState.lastMove]);
+
   return (
     <div className="chess-board">
-      {ranks.map(rank =>
-        files.map(file => {
+      {ranks.map((rank, rankIndex) =>
+        files.map((file, fileIndex) => {
           const square = `${file}${rank}`;
-          const isLight = (files.indexOf(file) + rank) % 2 === 1;
-          const isLastMove = lastMove && (lastMove.from === square || lastMove.to === square);
+          const isLight = (fileIndex + rank) % 2 === 1;
+          const isLastMove = boardState.lastMove && 
+            (boardState.lastMove.from === square || boardState.lastMove.to === square);
+          
+          const piece = boardState.board[rankIndex][fileIndex];
           
           return (
             <div
               key={square}
               className={`chess-square ${isLight ? 'light' : 'dark'} ${isLastMove ? 'last-move' : ''}`}
             >
-              <span className="chess-piece">
-                {square === 'e1' && '♔'}
-                {square === 'e8' && '♚'}
-                {square === 'a1' && '♖'}
-                {square === 'h1' && '♖'}
-                {square === 'a8' && '♜'}
-                {square === 'h8' && '♜'}
-              </span>
+              {piece && (
+                <span className="chess-piece">
+                  {piece}
+                </span>
+              )}
+              <div className="square-label">
+                {square}
+              </div>
             </div>
           );
         })
@@ -290,7 +577,7 @@ const GameDetail = () => {
   const [game, setGame] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [currentMoveIndex, setCurrentMoveIndex] = useState(0);
+  const [currentMoveIndex, setCurrentMoveIndex] = useState(-1); // Start at -1 to show initial position
   const [currentGameId, setCurrentGameId] = useState('sample1');
 
   // Load game data
@@ -329,7 +616,7 @@ const GameDetail = () => {
       switch(e.key) {
         case 'ArrowLeft':
           e.preventDefault();
-          setCurrentMoveIndex(prev => Math.max(0, prev - 1));
+          setCurrentMoveIndex(prev => Math.max(-1, prev - 1));
           break;
         case 'ArrowRight':
           e.preventDefault();
@@ -337,7 +624,7 @@ const GameDetail = () => {
           break;
         case 'Home':
           e.preventDefault();
-          setCurrentMoveIndex(0);
+          setCurrentMoveIndex(-1);
           break;
         case 'End':
           e.preventDefault();
@@ -408,7 +695,7 @@ const GameDetail = () => {
                 key={id}
                 onClick={() => {
                   setCurrentGameId(id);
-                  setCurrentMoveIndex(0);
+                  setCurrentMoveIndex(-1);
                 }}
                 className={`game-selector-button ${
                   currentGameId === id ? 'active' : 'inactive'
@@ -490,27 +777,32 @@ const GameDetail = () => {
               {loading ? (
                 <Skeleton className="aspect-square" />
               ) : (
-                <ChessBoard lastMove={{ from: "e2", to: "e4" }} />
+                <ChessBoard 
+                  moves={game?.moves} 
+                  currentMoveIndex={currentMoveIndex}
+                />
               )}
               
               {/* Move Navigation */}
               <div className="move-navigation">
                 <button 
-                  onClick={() => setCurrentMoveIndex(0)}
-                  disabled={loading || currentMoveIndex === 0}
+                  onClick={() => setCurrentMoveIndex(-1)}
+                  disabled={loading || currentMoveIndex === -1}
                   className="nav-button"
                 >
                   ⏮
                 </button>
                 <button 
-                  onClick={() => setCurrentMoveIndex(prev => Math.max(0, prev - 1))}
-                  disabled={loading || currentMoveIndex === 0}
+                  onClick={() => setCurrentMoveIndex(prev => Math.max(-1, prev - 1))}
+                  disabled={loading || currentMoveIndex === -1}
                   className="nav-button"
                 >
                   ⏪
                 </button>
                 <span className="move-counter">
-                  {loading ? <Skeleton className="h-4 w-12" /> : `${currentMoveIndex + 1}/${game?.moves.length || 0}`}
+                  {loading ? <Skeleton className="h-4 w-12" /> : 
+                    currentMoveIndex === -1 ? 'Start' : `${currentMoveIndex + 1}/${game?.moves.length || 0}`
+                  }
                 </span>
                 <button 
                   onClick={() => setCurrentMoveIndex(prev => Math.min((game?.moves.length || 0) - 1, prev + 1))}
