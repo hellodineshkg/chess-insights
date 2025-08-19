@@ -1,32 +1,62 @@
 import { useState, useMemo } from "react";
 
-export default function GamesTable({ games, loading }) {
-  const [sortKey, setSortKey] = useState("date");
-  const [sortOrder, setSortOrder] = useState("desc");
+export default function GamesTable({ games, loading, username }) {
+  const [sortOrder, setSortOrder] = useState("desc"); // default descending
   const [filterResult, setFilterResult] = useState("");
   const [filterTimeControl, setFilterTimeControl] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
 
   const sortedFilteredGames = useMemo(() => {
-    let filtered = games;
+    if (!games) return [];
 
-    if (filterResult) filtered = filtered.filter(g => g.winner === filterResult);
-    if (filterTimeControl) filtered = filtered.filter(g => g.speed.toLowerCase() === filterTimeControl.toLowerCase());
-    if (searchTerm) filtered = filtered.filter(g =>
-      g.opening?.eco?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      g.opening?.name?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const playerName = username?.toLowerCase();
 
-    return [...filtered].sort((a, b) => {
-      if (sortKey === "date") return sortOrder === "asc"
-        ? new Date(a.createdAt) - new Date(b.createdAt)
-        : new Date(b.createdAt) - new Date(a.createdAt);
-      return 0;
+    let filtered = games.filter(game => {
+      // Determine player color
+      const userColor = game.players.white.user?.name?.toLowerCase() === playerName
+        ? "white"
+        : game.players.black.user?.name?.toLowerCase() === playerName
+          ? "black"
+          : null;
+
+      if (!userColor) return false; // skip if player not found
+
+      game.userColor = userColor; // store for later
+      game.opponent = userColor === "white" ? game.players.black : game.players.white;
+
+      // Apply result filter
+      if (filterResult) {
+        if (filterResult === "draw" && game.winner) return false;
+        if (filterResult === "white" && !(game.winner === "white" && userColor === "white")) return false;
+        if (filterResult === "black" && !(game.winner === "black" && userColor === "black")) return false;
+      }
+
+      // Apply time control filter
+      if (filterTimeControl && game.speed.toLowerCase() !== filterTimeControl.toLowerCase()) return false;
+
+      // Apply search filter on opening
+      if (searchTerm) {
+        const openingMatch =
+          game.opening?.eco?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          game.opening?.name?.toLowerCase().includes(searchTerm.toLowerCase());
+        if (!openingMatch) return false;
+      }
+
+      return true;
     });
-  }, [games, sortKey, sortOrder, filterResult, filterTimeControl, searchTerm]);
+
+    // Sort by date
+    return filtered.sort((a, b) => {
+      const dateA = new Date(a.createdAt);
+      const dateB = new Date(b.createdAt);
+      return sortOrder === "asc" ? dateA - dateB : dateB - dateA;
+    });
+  }, [games, sortOrder, filterResult, filterTimeControl, searchTerm, username]);
 
   if (loading) return <p>Loading games...</p>;
-  if (!games.length) return <p>No games found.</p>;
+  if (!games || games.length === 0) return <p>No games found.</p>;
+
+  const toggleSortOrder = () => setSortOrder(prev => (prev === "asc" ? "desc" : "asc"));
 
   return (
     <div className="games-table-container">
@@ -42,7 +72,7 @@ export default function GamesTable({ games, loading }) {
           <option value="">All Results</option>
           <option value="white">Win as White</option>
           <option value="black">Win as Black</option>
-          <option value="">Draw</option>
+          <option value="draw">Draw</option>
         </select>
         <select value={filterTimeControl} onChange={e => setFilterTimeControl(e.target.value)}>
           <option value="">All Time Controls</option>
@@ -51,6 +81,9 @@ export default function GamesTable({ games, loading }) {
           <option value="rapid">Rapid</option>
           <option value="classical">Classical</option>
         </select>
+        <button onClick={toggleSortOrder}>
+          Sort by Date ({sortOrder === "asc" ? "Ascending" : "Descending"})
+        </button>
       </div>
 
       <table className="games-table">
@@ -66,23 +99,17 @@ export default function GamesTable({ games, loading }) {
           </tr>
         </thead>
         <tbody>
-          {sortedFilteredGames.map((g, i) => {
-            const isWhite = g.players.white.user;
-            const userColor = isWhite ? "White" : "Black";
-            const opponent = userColor === "White" ? g.players.black : g.players.white;
-
-            return (
-              <tr key={i}>
-                <td>{new Date(g.createdAt).toLocaleDateString()}</td>
-                <td>{opponent.user?.name || "Anon"}</td>
-                <td>{opponent.rating || "-"}</td>
-                <td>{userColor}</td>
-                <td>{g.winner ? (g.winner === userColor.toLowerCase() ? "Win" : "Loss") : "Draw"}</td>
-                <td>{g.speed}</td>
-                <td>{g.opening?.eco} – {g.opening?.name}</td>
-              </tr>
-            );
-          })}
+          {sortedFilteredGames.map((g, i) => (
+            <tr key={i}>
+              <td>{new Date(g.createdAt).toLocaleDateString()}</td>
+              <td>{g.opponent.user?.name || "Anon"}</td>
+              <td>{g.opponent.rating || "-"}</td>
+              <td>{g.userColor === "white" ? "White" : "Black"}</td>
+              <td>{g.winner ? (g.winner === g.userColor ? "Win" : "Loss") : "Draw"}</td>
+              <td>{g.speed}</td>
+              <td>{g.opening?.eco} – {g.opening?.name}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>

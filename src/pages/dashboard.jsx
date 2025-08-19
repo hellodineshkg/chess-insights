@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import TopBar from '../components/TopBar';
 import PlayerSearch from '../components/PlayerSearch';
 import PlayerSummary from '../components/PlayerSummary';
 import GamesTable from '../components/GamesTable';
-import Skeleton from "../components/Skeleton";
+import RatingPieChart from '../components/RatingPieChart';
+import Skeleton from '../components/Skeleton';
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(false);
@@ -15,39 +17,34 @@ export default function Dashboard() {
     setGames([]);
 
     try {
+      // Fetch player info
       const res = await fetch(`https://lichess.org/api/user/${username}`);
       if (!res.ok) throw new Error('Player not found');
       const data = await res.json();
 
-      // Opening stats
-      let mostPlayedOpening = null;
-      try {
-        const openingRes = await fetch(`https://explorer.lichess.ovh/lichess?variant=standard&speeds=blitz&player=${username}`);
-        const openingData = await openingRes.json();
-        if (openingData.moves && openingData.moves.length > 0) {
-          mostPlayedOpening = {
-            name: openingData.moves[0].san || openingData.moves[0].uci,
-            eco: openingData.moves[0].eco || 'N/A',
-          };
-        }
-      } catch { mostPlayedOpening = null; }
-
-      // Recent games
-      const gamesRes = await fetch(`https://lichess.org/api/games/user/${username}?max=50&opening=true`,
+      // Fetch recent games
+      const gamesRes = await fetch(
+        `https://lichess.org/api/games/user/${username}?max=50&opening=true`,
         { headers: { Accept: 'application/x-ndjson' } }
       );
       const textStream = await gamesRes.text();
       const parsedGames = textStream.trim().split('\n').map(line => JSON.parse(line));
 
-      // Compute win rates
-      let whiteGames=0, whiteWins=0, blackGames=0, blackWins=0;
+      // Compute win/loss/draw stats
+      let whiteGames = 0, whiteWins = 0, blackGames = 0, blackWins = 0;
       parsedGames.forEach(game => {
-        if (game.players.white.user?.name?.toLowerCase() === username.toLowerCase()) { whiteGames++; if(game.winner==='white') whiteWins++; }
-        if (game.players.black.user?.name?.toLowerCase() === username.toLowerCase()) { blackGames++; if(game.winner==='black') blackWins++; }
+        if (game.players.white.user?.name?.toLowerCase() === username.toLowerCase()) {
+          whiteGames++;
+          if (game.winner === 'white') whiteWins++;
+        }
+        if (game.players.black.user?.name?.toLowerCase() === username.toLowerCase()) {
+          blackGames++;
+          if (game.winner === 'black') blackWins++;
+        }
       });
 
-      const whiteWinPercent = whiteGames>0 ? ((whiteWins/whiteGames)*100).toFixed(1) : 'N/A';
-      const blackWinPercent = blackGames>0 ? ((blackWins/blackGames)*100).toFixed(1) : 'N/A';
+      const whiteWinPercent = whiteGames > 0 ? ((whiteWins / whiteGames) * 100).toFixed(1) : 'N/A';
+      const blackWinPercent = blackGames > 0 ? ((blackWins / blackGames) * 100).toFixed(1) : 'N/A';
 
       setStats({
         username: data.username,
@@ -57,8 +54,8 @@ export default function Dashboard() {
         draws: data.count.draw,
         whiteWinPercent,
         blackWinPercent,
-        mostPlayedOpening,
       });
+
       setGames(parsedGames);
 
     } catch (error) {
@@ -69,11 +66,45 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="dashboard-container">
-      <h1>Chess Dashboard</h1>
-      <PlayerSearch onSearch={handleSearch} />
-      <PlayerSummary stats={stats} loading={loading} />
-      <GamesTable games={games} loading={loading} />
+    <div>
+
+      <div className="dashboard-container">
+        <h1>Dashboard</h1>
+
+        {/* Centered search bar */}
+        <div className="search-bar-wrapper">
+          <PlayerSearch onSearch={handleSearch} />
+        </div>
+
+        {/* Skeleton loaders while loading */}
+        {loading && (
+          <div className="horizontal-layout">
+            <div className="summary-wrapper">
+              <Skeleton type="summary" />
+            </div>
+            <div className="chart-wrapper">
+              <Skeleton type="chart" />
+            </div>
+          </div>
+        )}
+
+        {/* PlayerSummary and Pie Chart side-by-side */}
+        {!loading && stats && games.length > 0 && (
+          <div className="horizontal-layout">
+            <div className="summary-wrapper">
+              <PlayerSummary stats={stats} loading={loading} />
+            </div>
+            <div className="chart-wrapper">
+              <RatingPieChart games={games} username={stats.username} />
+            </div>
+          </div>
+        )}
+
+        {/* Games table below */}
+        {!loading && stats && games.length > 0 && (
+          <GamesTable games={games} loading={loading} username={stats.username} />
+        )}
+      </div>
     </div>
   );
 }
