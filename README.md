@@ -25,11 +25,6 @@ A React-based web application that provides detailed insights into Lichess playe
 
 ---
 
-## Screenshots
-
-*(Include screenshots for dashboard, rating graph, and game detail page with move navigation.)*
-
----
 
 ## Technologies Used
 
